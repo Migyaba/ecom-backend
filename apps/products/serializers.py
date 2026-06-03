@@ -1,19 +1,26 @@
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
-from .models import Category, Product, ProductImage, ProductVariant, Review
+from .models import Category, Product, ProductImage, ProductVariant, Review, Testimonial
 
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ('id', 'name', 'slug', 'parent')
+        fields = ('id', 'name', 'slug', 'parent', 'eyebrow', 'tone', 'cover_url')
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
     class Meta:
         model = ProductImage
-        fields = ('id', 'image', 'order', 'is_cover')
+        fields = ('id', 'image', 'image_url', 'url', 'order', 'is_cover')
+
+    def get_url(self, obj):
+        if obj.image:
+            return self.context['request'].build_absolute_uri(obj.image.url)
+        return obj.image_url or None
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
@@ -23,12 +30,19 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
 
 class ReviewSerializer(serializers.ModelSerializer):
-    author = serializers.CharField(source='user.get_full_name', read_only=True)
+    author = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
         fields = ('id', 'author', 'rating', 'body', 'created_at')
         read_only_fields = ('id', 'author', 'created_at')
+
+    def get_author(self, obj):
+        full = obj.user.get_full_name().strip()
+        if full:
+            return full
+        # Fallback : prénom depuis l'email (avant le @)
+        return obj.user.email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
@@ -44,14 +58,16 @@ class ProductListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ('id', 'slug', 'name', 'store_name', 'category_name', 'price', 'original_price', 'badge', 'cover')
+        fields = ('id', 'slug', 'name', 'store_name', 'category_name', 'price', 'original_price', 'badge', 'sale_ends_at', 'cover')
 
     @extend_schema_field(OpenApiTypes.URI)
     def get_cover(self, obj):
         img = obj.images.filter(is_cover=True).first() or obj.images.first()
-        if img:
+        if not img:
+            return None
+        if img.image:
             return self.context['request'].build_absolute_uri(img.image.url)
-        return None
+        return img.image_url or None
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
@@ -82,3 +98,9 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_is_on_sale(self, obj):
         return obj.is_on_sale
+
+
+class TestimonialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Testimonial
+        fields = ('id', 'name', 'city', 'text', 'product_name', 'rating', 'tone')

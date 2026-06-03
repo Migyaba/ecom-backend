@@ -1,29 +1,25 @@
-# DinoMarket — Backend API
+# Ecom-backend
 
-API REST du marketplace e-commerce multi-vendeurs DinoMarket, construite avec **Django 6** et **Django REST Framework**.
+API REST générique pour applications e-commerce multi-vendeurs. Conçue avec **Django** et **Django REST Framework** pour être consommée par n'importe quel frontend (React, Vue, mobile, etc.).
+
+> Ce backend alimente actuellement [DinoMarket](../frontend) — une marketplace de mode et décoration africaine — mais peut être adapté à tout projet e-commerce.
 
 ---
 
 ## Table des matières
 
 1. [Stack technique](#stack-technique)
-2. [Architecture du projet](#architecture-du-projet)
+2. [Architecture](#architecture)
 3. [Prérequis](#prérequis)
-4. [Installation et démarrage](#installation-et-démarrage)
+4. [Installation](#installation)
 5. [Variables d'environnement](#variables-denvironnement)
 6. [Base de données](#base-de-données)
-7. [Authentification](#authentification)
+7. [Authentification JWT](#authentification-jwt)
 8. [Référence des endpoints](#référence-des-endpoints)
-   - [Auth](#auth)
-   - [Users](#users)
-   - [Stores](#stores)
-   - [Products](#products)
-   - [Orders](#orders)
-   - [Wishlist](#wishlist)
 9. [Pagination et filtres](#pagination-et-filtres)
-10. [Gestion des fichiers media](#gestion-des-fichiers-media)
-11. [Documentation Swagger](#documentation-swagger)
-12. [Déploiement en production](#déploiement-en-production)
+10. [Gestion des médias](#gestion-des-médias)
+11. [Documentation interactive (Swagger)](#documentation-interactive)
+12. [Déploiement](#déploiement)
 13. [Conventions](#conventions)
 
 ---
@@ -34,42 +30,40 @@ API REST du marketplace e-commerce multi-vendeurs DinoMarket, construite avec **
 |---|---|---|
 | Framework web | Django | 6.0.5 |
 | API REST | Django REST Framework | 3.17.1 |
-| Authentification | Simple JWT | 5.5.1 |
-| Documentation API | drf-spectacular (OpenAPI 3) | 0.28.0 |
+| Authentification | djangorestframework-simplejwt | 5.5.1 |
+| Documentation | drf-spectacular (OpenAPI 3) | 0.28.0 |
 | CORS | django-cors-headers | 4.9.0 |
 | Images | Pillow | 12.2.0 |
-| BDD (dev) | SQLite | — |
-| BDD (prod) | MySQL (o2switch) | — |
-| Hébergement | o2switch | — |
+| BDD développement | SQLite | — |
+| BDD production | MySQL 8+ | — |
 
 ---
 
-## Architecture du projet
+## Architecture
 
 ```
 backend/
 ├── config/
 │   ├── settings/
-│   │   ├── base.py          # Settings partagés
-│   │   ├── development.py   # SQLite + CORS Vite/React
-│   │   └── production.py    # MySQL + HTTPS + SMTP
-│   ├── urls.py              # Routeur principal + docs Swagger
+│   │   ├── base.py           # Paramètres communs
+│   │   ├── development.py    # SQLite · DEBUG=True · emails console
+│   │   └── production.py     # MySQL · HTTPS · SMTP
+│   ├── urls.py               # Routeur principal + Swagger
 │   ├── wsgi.py
 │   └── asgi.py
 ├── apps/
-│   ├── users/               # Comptes, profils, adresses
-│   ├── stores/              # Boutiques des vendeurs
-│   ├── products/            # Catalogue, catégories, avis
-│   ├── orders/              # Commandes
-│   └── wishlist/            # Liste de souhaits
-├── media/                   # Fichiers uploadés (avatars, produits, logos)
-├── staticfiles/             # Fichiers statiques collectés
+│   ├── users/                # Comptes utilisateurs, profils, adresses
+│   ├── stores/               # Boutiques des vendeurs
+│   ├── products/             # Catalogue, catégories, avis, témoignages
+│   ├── orders/               # Commandes et cycle de vie
+│   └── wishlist/             # Listes de souhaits
+├── media/                    # Fichiers uploadés (non versionné)
 ├── manage.py
 ├── requirements.txt
-└── .env                     # Variables d'environnement (non versionné)
+└── .env                      # Variables d'environnement (non versionné)
 ```
 
-Chaque application Django (`apps/`) suit la structure standard :
+Chaque application suit la structure standard Django :
 `models.py` → `serializers.py` → `views.py` → `urls.py`
 
 ---
@@ -78,20 +72,20 @@ Chaque application Django (`apps/`) suit la structure standard :
 
 - Python **3.12+**
 - pip
-- (Production uniquement) MySQL 8+ et un serveur SMTP
+- *(Production)* MySQL 8+ et un serveur SMTP
 
 ---
 
-## Installation et démarrage
+## Installation
 
 ### 1. Cloner le dépôt
 
 ```bash
 git clone <url-du-repo>
-cd dinomarket/backend
+cd backend
 ```
 
-### 2. Créer et activer l'environnement virtuel
+### 2. Environnement virtuel
 
 ```bash
 python -m venv .venv
@@ -99,59 +93,57 @@ source .venv/bin/activate        # Linux / macOS
 # .venv\Scripts\activate         # Windows
 ```
 
-### 3. Installer les dépendances
+### 3. Dépendances
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configurer les variables d'environnement
+### 4. Variables d'environnement
 
 ```bash
 cp .env.example .env
-# Éditer .env avec les valeurs réelles
+# Éditer .env avec vos valeurs
 ```
 
-### 5. Appliquer les migrations
+### 5. Migrations
 
 ```bash
 python manage.py migrate
 ```
 
-### 6. Créer un super-utilisateur (optionnel)
+### 6. Super-utilisateur (optionnel)
 
 ```bash
 python manage.py createsuperuser
 ```
 
-### 7. Lancer le serveur de développement
+### 7. Démarrer
 
 ```bash
 python manage.py runserver
 ```
 
-Le serveur démarre sur `http://127.0.0.1:8000`.
+Serveur disponible sur `http://127.0.0.1:8000`.
 
-> **Note :** Le projet utilise `config.settings.development` par défaut (SQLite, DEBUG=True, emails dans la console).
-> Pour utiliser les settings de production : `DJANGO_SETTINGS_MODULE=config.settings.production python manage.py runserver`
+> Le module `config.settings.development` est chargé par défaut (SQLite, DEBUG=True).  
+> Pour la production : `DJANGO_SETTINGS_MODULE=config.settings.production python manage.py runserver`
 
 ---
 
 ## Variables d'environnement
 
-Copier `.env.example` → `.env` et renseigner les valeurs.
-
-| Variable | Obligatoire | Description |
+| Variable | Environnement | Description |
 |---|---|---|
-| `SECRET_KEY` | Oui | Clé secrète Django (longue chaîne aléatoire en prod) |
+| `SECRET_KEY` | Dev + Prod | Clé secrète Django (chaîne aléatoire longue en prod) |
 | `ALLOWED_HOSTS` | Prod | Domaines autorisés, séparés par des virgules |
-| `CORS_ALLOWED_ORIGINS` | Prod | Origines frontend autorisées |
+| `CORS_ALLOWED_ORIGINS` | Prod | Origines frontend autorisées (ex. `https://monsite.com`) |
 | `DB_NAME` | Prod | Nom de la base MySQL |
 | `DB_USER` | Prod | Utilisateur MySQL |
 | `DB_PASSWORD` | Prod | Mot de passe MySQL |
 | `DB_HOST` | Prod | Hôte MySQL (défaut : `localhost`) |
 | `DB_PORT` | Prod | Port MySQL (défaut : `3306`) |
-| `EMAIL_HOST` | Prod | Serveur SMTP (ex. `mail.o2switch.net`) |
+| `EMAIL_HOST` | Prod | Serveur SMTP |
 | `EMAIL_PORT` | Prod | Port SMTP (ex. `587`) |
 | `EMAIL_HOST_USER` | Prod | Adresse email SMTP |
 | `EMAIL_HOST_PASSWORD` | Prod | Mot de passe SMTP |
@@ -162,89 +154,68 @@ Copier `.env.example` → `.env` et renseigner les valeurs.
 
 ### Développement — SQLite
 
-Aucune configuration requise. Le fichier `db.sqlite3` est créé automatiquement à la racine du backend.
+Aucune configuration requise. Le fichier `db.sqlite3` est créé automatiquement.
 
-### Production — MySQL (o2switch)
+### Production — MySQL
 
-La base est configurée via les variables d'environnement. Encoding `utf8mb4` forcé pour le support des caractères spéciaux.
+Configurée via les variables d'environnement. Encodage `utf8mb4` forcé.
 
-### Migrations
+### Commandes utiles
 
 ```bash
-# Appliquer toutes les migrations
+# Appliquer les migrations
 python manage.py migrate
 
 # Créer les migrations après modification d'un modèle
 python manage.py makemigrations
 
-# Voir l'état des migrations
+# État des migrations
 python manage.py showmigrations
 ```
 
-### Modèles de données
+### Modèles principaux
 
-#### `users.User` (extension de AbstractUser)
-| Champ | Type | Description |
+#### `users.User`
+| Champ | Type | Notes |
 |---|---|---|
 | `email` | EmailField unique | Identifiant de connexion |
 | `username` | CharField | Nom d'utilisateur |
-| `first_name` / `last_name` | CharField | Prénom / Nom |
-| `phone` | CharField | Numéro de téléphone |
+| `first_name` / `last_name` | CharField | Nom complet |
+| `phone` | CharField | Téléphone |
 | `avatar` | ImageField | Photo de profil |
 
-#### `users.Address`
-| Champ | Type | Description |
-|---|---|---|
-| `label` | CharField | Ex. "Maison", "Bureau" |
-| `full_name` | CharField | Nom complet du destinataire |
-| `line1` / `line2` | CharField | Lignes d'adresse |
-| `city` / `state` / `country` | CharField | Localisation |
-| `is_default` | BooleanField | Adresse principale |
-
 #### `stores.Store`
-| Champ | Type | Description |
+| Champ | Type | Notes |
 |---|---|---|
-| `owner` | OneToOneField(User) | Propriétaire de la boutique |
-| `name` / `slug` | CharField | Nom et identifiant URL |
-| `description` | TextField | Description libre |
-| `logo` / `banner` | ImageField | Visuels de la boutique |
-| `city` / `country` | CharField | Localisation |
-| `is_active` | BooleanField | Boutique visible ou non |
+| `owner` | OneToOneField(User) | Un vendeur = une boutique |
+| `name` / `slug` | CharField | Slug auto-généré |
+| `logo` / `banner` | ImageField | Visuels |
+| `is_active` | BooleanField | Visibilité publique |
 
 #### `products.Product`
-| Champ | Type | Description |
+| Champ | Type | Notes |
 |---|---|---|
-| `store` | ForeignKey(Store) | Boutique vendeur |
-| `category` | ForeignKey(Category) | Catégorie du produit |
-| `name` / `slug` | CharField | Nom et identifiant URL |
-| `price` | PositiveIntegerField | Prix en **FCFA (XOF)** |
-| `original_price` | PositiveIntegerField | Prix barré (si promo) |
+| `store` | ForeignKey(Store) | Boutique propriétaire |
+| `category` | ForeignKey(Category) | Catégorie |
+| `price` | PositiveIntegerField | Prix entier (FCFA) |
+| `original_price` | PositiveIntegerField | Prix barré (promo) |
 | `badge` | CharField | `new` ou `sale` |
-| `is_active` | BooleanField | Produit visible ou non |
-
-#### `products.ProductVariant`
-| Champ | Type | Description |
-|---|---|---|
-| `size` | CharField | Taille (ex. `M`, `XL`) |
-| `color` | CharField | Couleur |
-| `stock` | PositiveIntegerField | Quantité disponible |
 
 #### `orders.Order`
-| Champ | Type | Description |
+| Champ | Type | Notes |
 |---|---|---|
 | `user` | ForeignKey(User) | Client |
 | `address` | ForeignKey(Address) | Adresse de livraison |
 | `status` | CharField | `pending` → `confirmed` → `shipped` → `delivered` / `cancelled` |
-| `promo_code` | CharField | Code promo appliqué |
-| `discount_amount` | PositiveIntegerField | Montant de la réduction (FCFA) |
+| `discount_amount` | PositiveIntegerField | Réduction appliquée |
 
 ---
 
-## Authentification
+## Authentification JWT
 
-L'API utilise **JWT (JSON Web Tokens)** via `djangorestframework-simplejwt`.
+L'API utilise **JSON Web Tokens** via `djangorestframework-simplejwt`.
 
-### Obtenir un token
+### Connexion
 
 ```http
 POST /api/auth/token/
@@ -256,7 +227,6 @@ Content-Type: application/json
 }
 ```
 
-**Réponse :**
 ```json
 {
   "access": "<access_token>",
@@ -264,26 +234,22 @@ Content-Type: application/json
 }
 ```
 
-### Utiliser le token
-
-Ajouter l'en-tête à chaque requête protégée :
+### Utilisation
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-### Rafraîchir le token
+### Rafraîchissement
 
 ```http
 POST /api/auth/token/refresh/
 Content-Type: application/json
 
-{
-  "refresh": "<refresh_token>"
-}
+{ "refresh": "<refresh_token>" }
 ```
 
-| Token | Durée de validité |
+| Token | Durée |
 |---|---|
 | `access` | 60 minutes |
 | `refresh` | 7 jours |
@@ -292,52 +258,38 @@ Content-Type: application/json
 
 ## Référence des endpoints
 
-> **Légende :**
-> - 🌐 Public — aucun token requis
-> - 🔒 Authentifié — token JWT requis
-> - 👤 Propriétaire — token JWT du propriétaire de la ressource
-
----
+> 🌐 Public — 🔒 JWT requis — 👤 Propriétaire de la ressource
 
 ### Auth
 
 | Méthode | URL | Accès | Description |
 |---|---|---|---|
-| `POST` | `/api/auth/token/` | 🌐 | Connexion → obtenir access + refresh token |
-| `POST` | `/api/auth/token/refresh/` | 🌐 | Rafraîchir le token d'accès |
-
----
+| `POST` | `/api/auth/token/` | 🌐 | Connexion → tokens JWT |
+| `POST` | `/api/auth/token/refresh/` | 🌐 | Rafraîchir l'access token |
 
 ### Users
 
 | Méthode | URL | Accès | Description |
 |---|---|---|---|
 | `POST` | `/api/users/register/` | 🌐 | Créer un compte |
-| `GET` | `/api/users/me/` | 🔒 | Voir mon profil |
-| `PATCH` | `/api/users/me/` | 🔒 | Modifier mon profil (partiel) |
-| `PUT` | `/api/users/me/` | 🔒 | Modifier mon profil (complet) |
-| `GET` | `/api/users/addresses/` | 🔒 | Lister mes adresses |
+| `GET` | `/api/users/me/` | 🔒 | Mon profil |
+| `PATCH` | `/api/users/me/` | 🔒 | Modifier mon profil |
+| `GET` | `/api/users/addresses/` | 🔒 | Mes adresses |
 | `POST` | `/api/users/addresses/` | 🔒 | Ajouter une adresse |
-| `GET` | `/api/users/addresses/{id}/` | 🔒 | Voir une adresse |
-| `PATCH` | `/api/users/addresses/{id}/` | 🔒 | Modifier une adresse (partiel) |
-| `PUT` | `/api/users/addresses/{id}/` | 🔒 | Modifier une adresse (complet) |
+| `PATCH` | `/api/users/addresses/{id}/` | 🔒 | Modifier une adresse |
 | `DELETE` | `/api/users/addresses/{id}/` | 🔒 | Supprimer une adresse |
 
-**Inscription — corps de requête :**
+**Corps d'inscription :**
 ```json
 {
   "email": "fatou@example.com",
   "username": "fatou22",
   "first_name": "Fatou",
   "last_name": "Diallo",
-  "password": "monMotDePasse123",
-  "password2": "monMotDePasse123"
+  "password": "motDePasse123",
+  "password2": "motDePasse123"
 }
 ```
-
-**Règle adresse par défaut :** passer `"is_default": true` désactive automatiquement toutes les autres adresses de l'utilisateur.
-
----
 
 ### Stores
 
@@ -346,38 +298,32 @@ Content-Type: application/json
 | `GET` | `/api/stores/` | 🌐 | Lister les boutiques actives |
 | `POST` | `/api/stores/` | 🔒 | Créer ma boutique |
 | `GET` | `/api/stores/{slug}/` | 🌐 | Détail d'une boutique |
-| `PATCH` | `/api/stores/{slug}/` | 👤 | Modifier ma boutique (partiel) |
-| `PUT` | `/api/stores/{slug}/` | 👤 | Modifier ma boutique (complet) |
+| `PATCH` | `/api/stores/{slug}/` | 👤 | Modifier ma boutique |
 | `DELETE` | `/api/stores/{slug}/` | 👤 | Supprimer ma boutique |
 
-**Règle :** un utilisateur ne peut posséder qu'**une seule boutique**. Le `slug` est généré automatiquement à partir du nom.
-
----
+> Un utilisateur ne peut posséder qu'**une seule boutique**.
 
 ### Products
 
 | Méthode | URL | Accès | Description |
 |---|---|---|---|
-| `GET` | `/api/products/` | 🌐 | Lister les produits (paginé) |
+| `GET` | `/api/products/` | 🌐 | Lister les produits (paginé + filtres) |
 | `GET` | `/api/products/{slug}/` | 🌐 | Fiche produit complète |
 | `POST` | `/api/products/{slug}/reviews/` | 🔒 | Poster un avis |
 | `GET` | `/api/products/categories/` | 🌐 | Lister les catégories |
 | `GET` | `/api/products/categories/{slug}/` | 🌐 | Détail d'une catégorie |
+| `GET` | `/api/products/testimonials/` | 🌐 | Témoignages homepage |
 
 **Filtres disponibles sur `GET /api/products/` :**
 
-| Paramètre | Type | Exemple | Description |
-|---|---|---|---|
-| `category` | string | `?category=figurines` | Filtrer par slug de catégorie |
-| `badge` | string | `?badge=sale` | `new` ou `sale` |
-| `store` | string | `?store=dino-shop` | Filtrer par slug de boutique |
-| `search` | string | `?search=t-rex` | Recherche dans nom, boutique, catégorie |
-| `ordering` | string | `?ordering=-price` | `price`, `-price`, `created_at`, `-created_at` |
-| `page` | int | `?page=2` | Page de résultats (20 par page) |
-
-**Règle avis :** un utilisateur ne peut laisser **qu'un seul avis** par produit.
-
----
+| Paramètre | Exemple | Description |
+|---|---|---|
+| `category` | `?category=women` | Slug de catégorie |
+| `badge` | `?badge=sale` | `new` ou `sale` |
+| `store` | `?store=sade-atelier` | Slug de boutique |
+| `search` | `?search=robe` | Recherche textuelle |
+| `ordering` | `?ordering=-price` | `price`, `-price`, `created_at`, `-created_at` |
+| `page` | `?page=2` | Page (20 résultats/page) |
 
 ### Orders
 
@@ -388,7 +334,7 @@ Content-Type: application/json
 | `GET` | `/api/orders/{id}/` | 🔒 | Détail d'une commande |
 | `POST` | `/api/orders/{id}/cancel/` | 🔒 | Annuler une commande |
 
-**Passer une commande — corps de requête :**
+**Corps de commande :**
 ```json
 {
   "address_id": 3,
@@ -399,90 +345,71 @@ Content-Type: application/json
 }
 ```
 
-**Cycle de vie d'une commande :**
-
+**Cycle de vie :**
 ```
 pending → confirmed → shipped → delivered
-                ↘ cancelled (depuis pending ou confirmed uniquement)
+               ↘ cancelled (depuis pending ou confirmed)
 ```
-
-**Règle :** les prix unitaires sont figés au moment de la commande — une modification du produit ultérieure n'affecte pas les commandes existantes.
-
----
 
 ### Wishlist
 
 | Méthode | URL | Accès | Description |
 |---|---|---|---|
-| `GET` | `/api/wishlist/` | 🔒 | Voir ma liste de souhaits |
+| `GET` | `/api/wishlist/` | 🔒 | Ma liste de souhaits |
 | `POST` | `/api/wishlist/` | 🔒 | Ajouter un produit |
-| `GET` | `/api/wishlist/{id}/` | 🔒 | Voir un item |
 | `DELETE` | `/api/wishlist/{id}/` | 🔒 | Retirer un produit |
 
-**Ajouter un produit — corps de requête :**
 ```json
 { "product_id": 42 }
 ```
-
-**Idempotent :** ajouter un produit déjà présent retourne l'item existant sans créer de doublon.
 
 ---
 
 ## Pagination et filtres
 
-Toutes les listes sont paginées avec **20 éléments par page** par défaut.
+Toutes les listes sont paginées — **20 éléments par page** par défaut.
 
-**Format de réponse paginée :**
 ```json
 {
   "count": 85,
   "next": "http://localhost:8000/api/products/?page=2",
   "previous": null,
-  "results": [ ... ]
+  "results": []
 }
 ```
 
-Paramètres de pagination :
-- `?page=2` — accéder à la page suivante
-- La taille de page est fixe (20). Elle peut être modifiée dans `settings/base.py` → `PAGE_SIZE`.
-
 ---
 
-## Gestion des fichiers media
+## Gestion des médias
 
-Les fichiers uploadés (avatars, images produits, logos boutique) sont stockés dans `media/` et servis sous `/media/`.
-
-| Type de fichier | Dossier de stockage |
+| Type | Chemin de stockage |
 |---|---|
-| Avatars utilisateurs | `media/avatars/` |
+| Avatars | `media/avatars/` |
 | Images produits | `media/products/` |
 | Logos boutiques | `media/stores/logos/` |
-| Bannières boutiques | `media/stores/banners/` |
+| Bannières | `media/stores/banners/` |
 
-**En développement**, les fichiers sont servis directement par Django (via `static()` dans `urls.py`).
-
-**En production**, configurer le serveur web (Apache/Nginx sur o2switch) pour servir le dossier `media/` statiquement.
+Les médias sont servis sous `/media/` (par Django en dev, par le serveur web en prod).
 
 ---
 
-## Documentation Swagger
+## Documentation interactive
 
-La documentation interactive est générée automatiquement par **drf-spectacular** à partir des annotations `@extend_schema` présentes dans les vues.
+Générée automatiquement par **drf-spectacular** depuis les annotations `@extend_schema`.
 
-| URL | Interface | Description |
-|---|---|---|
-| `/api/docs/` | Swagger UI | Interface interactive — tester les endpoints depuis le navigateur |
-| `/api/redoc/` | ReDoc | Documentation lisible — idéale pour la lecture |
-| `/api/schema/` | YAML brut | Schéma OpenAPI 3.0 téléchargeable |
+| URL | Interface |
+|---|---|
+| `/api/docs/` | Swagger UI — tester les endpoints depuis le navigateur |
+| `/api/redoc/` | ReDoc — documentation lisible |
+| `/api/schema/` | Schéma OpenAPI 3.0 brut (YAML) |
 
-### Utiliser Swagger UI
+### Authentifier dans Swagger UI
 
 1. Ouvrir `http://localhost:8000/api/docs/`
-2. Cliquer sur **Authorize** (icône cadenas)
-3. Entrer `Bearer <votre_access_token>`
-4. Tester les endpoints directement depuis l'interface
+2. Cliquer **Authorize** (icône cadenas)
+3. Saisir `Bearer <votre_access_token>`
 
-### Générer le schéma YAML manuellement
+### Exporter le schéma
 
 ```bash
 python manage.py spectacular --file schema.yml
@@ -490,20 +417,20 @@ python manage.py spectacular --file schema.yml
 
 ---
 
-## Déploiement en production
+## Déploiement
 
-### Checklist avant déploiement
+### Checklist
 
+- [ ] `SECRET_KEY` longue et unique dans `.env`
 - [ ] `DEBUG = False` (automatique avec `production.py`)
-- [ ] `SECRET_KEY` longue et aléatoire dans `.env`
 - [ ] `ALLOWED_HOSTS` configuré avec le domaine réel
-- [ ] `CORS_ALLOWED_ORIGINS` limité au(x) domaine(s) frontend
-- [ ] Base MySQL créée et credentials dans `.env`
+- [ ] `CORS_ALLOWED_ORIGINS` limité aux origines frontend
+- [ ] Base MySQL créée, credentials dans `.env`
 - [ ] `python manage.py migrate` exécuté
 - [ ] `python manage.py collectstatic` exécuté
-- [ ] Dossier `media/` accessible en écriture par le serveur web
+- [ ] Dossier `media/` accessible en écriture par le serveur
 
-### Commandes de déploiement
+### Commandes
 
 ```bash
 export DJANGO_SETTINGS_MODULE=config.settings.production
@@ -513,7 +440,7 @@ python manage.py migrate
 python manage.py collectstatic --noinput
 ```
 
-### Headers de sécurité (activés automatiquement en prod)
+### En-têtes de sécurité (prod)
 
 | Header | Valeur |
 |---|---|
@@ -526,15 +453,22 @@ python manage.py collectstatic --noinput
 ## Conventions
 
 ### Devises
-Les prix sont stockés et retournés en **FCFA (XOF)**, entiers. Le XOF n'ayant pas de sous-unité, aucune conversion n'est nécessaire.
-Exemple : `5000` = 5 000 FCFA.
+Les prix sont des entiers en **FCFA (XOF)**. `5000` = 5 000 FCFA. Aucune conversion ni décimale.
 
 ### Slugs vs IDs
-- Les ressources **publiques** (produits, boutiques, catégories) s'identifient par leur **slug** dans l'URL.
-- Les ressources **privées** (adresses, commandes, items wishlist) s'identifient par leur **ID entier**.
+- Ressources **publiques** (produits, boutiques, catégories) → **slug** dans l'URL
+- Ressources **privées** (adresses, commandes, wishlist) → **ID entier**
 
 ### Fuseaux horaires
-Le projet utilise le fuseau `Africa/Lagos` (UTC+1). Toutes les dates retournées par l'API sont en ISO 8601 avec fuseau horaire.
+Fuseau `Africa/Lagos` (UTC+1). Toutes les dates ISO 8601 avec fuseau.
 
 ### Langue
-Les messages d'erreur et validations sont en **français**. La locale Django est `fr-fr`.
+Messages d'erreur et validations en **français**. Locale Django : `fr-fr`.
+
+### Intégration avec un nouveau frontend
+Ce backend expose uniquement une API JSON — aucun couplage avec un frontend spécifique.  
+Pour connecter un nouveau frontend :
+1. Configurer `CORS_ALLOWED_ORIGINS` dans `.env` avec l'origine de votre frontend
+2. Pointer vos appels API vers `http://<host>/api/`
+3. Implémenter le flux JWT : `POST /api/auth/token/` → stocker → `Authorization: Bearer`
+4. Consulter `/api/docs/` pour la documentation complète

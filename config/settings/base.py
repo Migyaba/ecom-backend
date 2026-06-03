@@ -80,24 +80,26 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'DinoMarket API',
+    'TITLE': 'Ecom-backend',
     'DESCRIPTION': (
-        'API REST du projet DinoMarket — marketplace e-commerce multi-vendeurs.\n\n'
+        'API REST générique pour applications e-commerce multi-vendeurs.\n\n'
+        'Conçue pour être consommée par n\'importe quel frontend (React, Vue, mobile, etc.).\n\n'
         '## Authentification\n'
         'Toutes les routes protégées utilisent **JWT Bearer Token**.\n'
         '1. Obtenez un token via `POST /api/auth/token/` avec votre email et mot de passe.\n'
         '2. Ajoutez l\'en-tête `Authorization: Bearer <access_token>` à chaque requête.\n'
         '3. Rafraîchissez le token via `POST /api/auth/token/refresh/` avant expiration (60 min).\n\n'
         '## Conventions\n'
-        '- Les prix sont en **FCFA** (XOF). Ex : 5 000 = 5 000 FCFA.\n'
+        '- Les prix sont stockés en entiers (FCFA / XOF par défaut). Ex : `5000` = 5 000 FCFA.\n'
         '- Les slugs remplacent les IDs pour les ressources publiques (produits, boutiques, catégories).\n'
         '- La pagination est activée par défaut : `?page=1`, taille de page 20.\n'
         '- Les images uploadées sont servies sous `/media/`.\n'
+        '- Les routes 🌐 sont publiques — les routes 🔒 nécessitent un token JWT valide.\n'
     ),
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'CONTACT': {'name': 'Miguel Missetcho', 'email': 'm.missetcho@gmail.com'},
-    'LICENSE': {'name': 'Propriétaire'},
+    'LICENSE': {'name': 'MIT'},
     'COMPONENT_SPLIT_REQUEST': True,
     'SWAGGER_UI_SETTINGS': {
         'persistAuthorization': True,
@@ -105,11 +107,11 @@ SPECTACULAR_SETTINGS = {
         'filter': True,
     },
     'TAGS': [
-        {'name': 'Auth', 'description': 'Obtention et rafraîchissement des tokens JWT.'},
-        {'name': 'Users', 'description': 'Inscription, profil personnel et gestion des adresses.'},
-        {'name': 'Stores', 'description': 'Boutiques des vendeurs — lecture publique, création/édition nécessite un compte.'},
-        {'name': 'Products', 'description': 'Catalogue de produits, catégories et avis clients.'},
-        {'name': 'Orders', 'description': 'Passation et suivi des commandes (accès authentifié uniquement).'},
+        {'name': 'Auth',     'description': 'Obtention et rafraîchissement des tokens JWT.'},
+        {'name': 'Users',    'description': 'Inscription, profil personnel et gestion des adresses.'},
+        {'name': 'Stores',   'description': 'Boutiques des vendeurs — lecture publique, création/édition nécessite un compte.'},
+        {'name': 'Products', 'description': 'Catalogue de produits, catégories, témoignages et avis clients.'},
+        {'name': 'Orders',   'description': 'Passation et suivi des commandes (accès authentifié uniquement).'},
         {'name': 'Wishlist', 'description': 'Liste de souhaits personnelle (accès authentifié uniquement).'},
     ],
 }
