@@ -3,10 +3,10 @@ from drf_spectacular.utils import (
     extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
 )
 from drf_spectacular.types import OpenApiTypes
-from .models import Category, Product, Review
+from .models import Category, Product, Review, Testimonial
 from .serializers import (
     CategorySerializer, ProductListSerializer,
-    ProductDetailSerializer, ReviewSerializer,
+    ProductDetailSerializer, ReviewSerializer, TestimonialSerializer,
 )
 
 
@@ -182,3 +182,16 @@ class ReviewCreateView(generics.CreateAPIView):
         ctx = super().get_serializer_context()
         ctx['product'] = generics.get_object_or_404(Product, slug=self.kwargs['slug'])
         return ctx
+
+
+@extend_schema(
+    tags=['Products'],
+    summary='Témoignages clients',
+    description='Retourne les témoignages actifs affichés sur la page d\'accueil. Accès public.',
+    responses={200: TestimonialSerializer(many=True)},
+)
+class TestimonialListView(generics.ListAPIView):
+    queryset = Testimonial.objects.filter(is_active=True)
+    serializer_class = TestimonialSerializer
+    permission_classes = (permissions.AllowAny,)
+    pagination_class = None
