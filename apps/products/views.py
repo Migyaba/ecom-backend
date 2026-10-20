@@ -25,14 +25,14 @@ from .serializers import (
     retrieve=extend_schema(
         summary='Détail d\'une catégorie',
         description=(
-            'Retourne une catégorie par son **slug** (ex. `dinosaures-carnivores`).\n\n'
+            'Retourne une catégorie par son **slug** (ex. `femme`).\n\n'
             '**Accès public** — aucun token requis.'
         ),
         responses={200: CategorySerializer},
         parameters=[
             OpenApiParameter(
                 'slug', OpenApiTypes.STR, OpenApiParameter.PATH,
-                description='Slug unique de la catégorie (ex. `dinosaures-carnivores`).',
+                description='Slug unique de la catégorie (ex. `femme`).',
             ),
         ],
     ),
@@ -65,7 +65,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         parameters=[
             OpenApiParameter(
                 'category', OpenApiTypes.STR, OpenApiParameter.QUERY,
-                description='Filtrer par slug de catégorie (ex. `figurines`).',
+                description='Filtrer par slug de catégorie (ex. `bijoux`).',
                 required=False,
             ),
             OpenApiParameter(
@@ -76,7 +76,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
             ),
             OpenApiParameter(
                 'store', OpenApiTypes.STR, OpenApiParameter.QUERY,
-                description='Filtrer par slug de boutique (ex. `dino-shop-lagos`).',
+                description='Filtrer par slug de boutique (ex. `sade-atelier`).',
                 required=False,
             ),
             OpenApiParameter(
@@ -105,13 +105,13 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         parameters=[
             OpenApiParameter(
                 'slug', OpenApiTypes.STR, OpenApiParameter.PATH,
-                description='Slug unique du produit (ex. `t-rex-en-peluche-xl`).',
+                description='Slug unique du produit (ex. `robe-portefeuille-ankara`).',
             ),
         ],
     ),
 )
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Product.objects.filter(is_active=True).select_related('store', 'category').prefetch_related('images')
+    queryset = Product.objects.filter(is_active=True).select_related('store', 'category').prefetch_related('images', 'variants')
     permission_classes = (permissions.AllowAny,)
     filter_backends = (filters.SearchFilter, filters.OrderingFilter)
     search_fields = ('name', 'store__name', 'category__name')
@@ -126,6 +126,8 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.action == 'retrieve':
+            return qs.prefetch_related('reviews__user')
         cat = self.request.query_params.get('category')
         badge = self.request.query_params.get('badge')
         store = self.request.query_params.get('store')
@@ -180,7 +182,7 @@ class ReviewCreateView(generics.CreateAPIView):
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
-        ctx['product'] = generics.get_object_or_404(Product, slug=self.kwargs['slug'])
+        ctx['product'] = generics.get_object_or_404(Product, slug=self.kwargs['slug'], is_active=True)
         return ctx
 
 

@@ -41,8 +41,8 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             OpenApiExample(
                 'Nouvelle boutique',
                 value={
-                    'name': 'Dino Shop Lagos',
-                    'description': 'La meilleure boutique de figurines dinosaures en Côte d\'Ivoire !',
+                    'name': 'Sadé Atelier',
+                    'description': 'Pagnes et tenues sur mesure, cousus main à Abidjan.',
                     'city': 'Abidjan',
                     'country': 'Côte d\'Ivoire',
                 },
@@ -60,7 +60,7 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
         parameters=[
             OpenApiParameter(
                 'slug', OpenApiTypes.STR, OpenApiParameter.PATH,
-                description='Slug unique de la boutique (ex. `dino-shop-lagos`).',
+                description='Slug unique de la boutique (ex. `sade-atelier`).',
             ),
         ],
     ),
@@ -100,5 +100,12 @@ class StoreViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
 
     def perform_create(self, serializer):
-        name = serializer.validated_data['name']
-        serializer.save(owner=self.request.user, slug=slugify(name))
+        serializer.save(owner=self.request.user, slug=unique_slug(serializer.validated_data['name']))
+
+
+def unique_slug(name):
+    base = slugify(name) or 'boutique'
+    slug, n = base, 2
+    while Store.objects.filter(slug=slug).exists():
+        slug, n = f'{base}-{n}', n + 1
+    return slug

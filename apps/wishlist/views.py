@@ -65,4 +65,4 @@ class WishlistViewSet(viewsets.ModelViewSet):
     http_method_names = ('get', 'post', 'delete', 'head', 'options')
 
     def get_queryset(self):
-        return WishlistItem.objects.filter(user=self.request.user).select_related('product__store', 'product__category').prefetch_related('product__images')
+        return WishlistItem.objects.filter(user=self.request.user).select_related('product__store', 'product__category').prefetch_related('product__images', 'product__variants')

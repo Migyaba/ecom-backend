@@ -29,13 +29,15 @@ API REST générique pour applications e-commerce multi-vendeurs. Conçue avec *
 | Composant | Technologie | Version |
 |---|---|---|
 | Framework web | Django | 6.0.5 |
+| Serveur WSGI | Gunicorn (+ WhiteNoise) | 23.0.0 |
+| Stockage médias (prod) | django-storages → MinIO (S3) | 1.14.6 |
 | API REST | Django REST Framework | 3.17.1 |
 | Authentification | djangorestframework-simplejwt | 5.5.1 |
 | Documentation | drf-spectacular (OpenAPI 3) | 0.28.0 |
 | CORS | django-cors-headers | 4.9.0 |
 | Images | Pillow | 12.2.0 |
 | BDD développement | SQLite | — |
-| BDD production | MySQL 8+ | — |
+| BDD production | PostgreSQL | — |
 
 ---
 
@@ -47,7 +49,7 @@ backend/
 │   ├── settings/
 │   │   ├── base.py           # Paramètres communs
 │   │   ├── development.py    # SQLite · DEBUG=True · emails console
-│   │   └── production.py     # MySQL · HTTPS · SMTP
+│   │   └── production.py     # PostgreSQL · HTTPS · SMTP
 │   ├── urls.py               # Routeur principal + Swagger
 │   ├── wsgi.py
 │   └── asgi.py
@@ -72,7 +74,7 @@ Chaque application suit la structure standard Django :
 
 - Python **3.12+**
 - pip
-- *(Production)* MySQL 8+ et un serveur SMTP
+- *(Production)* PostgreSQL et un serveur SMTP
 
 ---
 
@@ -138,11 +140,11 @@ Serveur disponible sur `http://127.0.0.1:8000`.
 | `SECRET_KEY` | Dev + Prod | Clé secrète Django (chaîne aléatoire longue en prod) |
 | `ALLOWED_HOSTS` | Prod | Domaines autorisés, séparés par des virgules |
 | `CORS_ALLOWED_ORIGINS` | Prod | Origines frontend autorisées (ex. `https://monsite.com`) |
-| `DB_NAME` | Prod | Nom de la base MySQL |
-| `DB_USER` | Prod | Utilisateur MySQL |
-| `DB_PASSWORD` | Prod | Mot de passe MySQL |
-| `DB_HOST` | Prod | Hôte MySQL (défaut : `localhost`) |
-| `DB_PORT` | Prod | Port MySQL (défaut : `3306`) |
+| `DB_NAME` | Prod | Nom de la base PostgreSQL |
+| `DB_USER` | Prod | Utilisateur PostgreSQL |
+| `DB_PASSWORD` | Prod | Mot de passe PostgreSQL |
+| `DB_HOST` | Prod | Hôte PostgreSQL (défaut : `localhost`) |
+| `DB_PORT` | Prod | Port PostgreSQL (défaut : `5432`) |
 | `EMAIL_HOST` | Prod | Serveur SMTP |
 | `EMAIL_PORT` | Prod | Port SMTP (ex. `587`) |
 | `EMAIL_HOST_USER` | Prod | Adresse email SMTP |
@@ -156,9 +158,9 @@ Serveur disponible sur `http://127.0.0.1:8000`.
 
 Aucune configuration requise. Le fichier `db.sqlite3` est créé automatiquement.
 
-### Production — MySQL
+### Production — PostgreSQL
 
-Configurée via les variables d'environnement. Encodage `utf8mb4` forcé.
+Configurée via les variables d'environnement.
 
 ### Commandes utiles
 
@@ -254,6 +256,8 @@ Content-Type: application/json
 | `access` | 60 minutes |
 | `refresh` | 7 jours |
 
+> `/api/auth/token/` et `/api/users/register/` sont limités à 10 requêtes/minute par IP.
+
 ---
 
 ## Référence des endpoints
@@ -341,9 +345,19 @@ Content-Type: application/json
   "items": [
     { "variant_id": 12, "qty": 2 },
     { "variant_id": 7,  "qty": 1 }
-  ]
+  ],
+  "delivery_method": "standard",
+  "payment_method": "pod",
+  "promo_code": "DINO10"
 }
 ```
+
+- L'adresse doit appartenir à l'utilisateur connecté.
+- Le stock des variantes est vérifié puis décrémenté (restitué en cas d'annulation).
+- `delivery_method` : `express` (3 500), `standard` (2 500, gratuit au-delà de 50 000), `pickup` (0).
+- `payment_method` : `card`, `transfer`, `pod` (paiement à la livraison).
+- `promo_code` : validé côté serveur (`PROMO_CODES` dans `settings/base.py`).
+- Total = sous-total − réduction + frais de livraison.
 
 **Cycle de vie :**
 ```
@@ -389,7 +403,8 @@ Toutes les listes sont paginées — **20 éléments par page** par défaut.
 | Logos boutiques | `media/stores/logos/` |
 | Bannières | `media/stores/banners/` |
 
-Les médias sont servis sous `/media/` (par Django en dev, par le serveur web en prod).
+En développement, les médias sont écrits dans `media/` et servis par Django sous `/media/`.
+En production, ils sont stockés dans le bucket MinIO (`MINIO_BUCKET`) et les URLs renvoyées par l'API pointent vers `MINIO_PUBLIC_DOMAIN`.
 
 ---
 
@@ -419,26 +434,102 @@ python manage.py spectacular --file schema.yml
 
 ## Déploiement
 
-### Checklist
+Le backend est déployé en **Docker sur un VPS**, derrière un **Traefik** existant, par GitHub Actions ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)).
 
-- [ ] `SECRET_KEY` longue et unique dans `.env`
-- [ ] `DEBUG = False` (automatique avec `production.py`)
-- [ ] `ALLOWED_HOSTS` configuré avec le domaine réel
-- [ ] `CORS_ALLOWED_ORIGINS` limité aux origines frontend
-- [ ] Base MySQL créée, credentials dans `.env`
-- [ ] `python manage.py migrate` exécuté
-- [ ] `python manage.py collectstatic` exécuté
-- [ ] Dossier `media/` accessible en écriture par le serveur
+### Pipeline
 
-### Commandes
+| Événement | Jobs |
+|---|---|
+| Pull request vers `master` | `test` (check Django, migrations à jour, tests) |
+| Push sur `master` / lancement manuel | `test` → `build` (image poussée sur `ghcr.io/migyaba/ecom-backend`) → `deploy` (SSH sur le VPS) |
+
+Le job `deploy` copie `docker-compose.prod.yml` sur le VPS, récupère l'image du commit (`sha-<commit>`) et relance la stack avec `docker compose up -d --wait`. Les migrations sont appliquées au démarrage du conteneur (`docker/entrypoint.sh`).
+
+### Stack (`docker-compose.prod.yml`)
+
+| Service | Rôle |
+|---|---|
+| `db` | PostgreSQL 16, données dans le volume `pgdata` |
+| `web` | Django + Gunicorn ; fichiers statiques servis par WhiteNoise |
+
+`web` est exposé par Traefik via ses labels ; `db` n'est joignable que sur le réseau interne.
+Les fichiers uploadés (images produits, avatars, logos) sont stockés dans **MinIO** (voir ci-dessous).
+
+### Mise en place (une seule fois)
+
+**1. Sur le VPS**
 
 ```bash
-export DJANGO_SETTINGS_MODULE=config.settings.production
-
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py collectstatic --noinput
+sudo mkdir -p /opt/ecom-backend && sudo chown $USER /opt/ecom-backend
+cd /opt/ecom-backend
+nano .env          # partir de .env.example (SECRET_KEY, DB_PASSWORD, domaine, Traefik…)
+chmod 600 .env
 ```
+
+Vérifier dans `.env` que `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT` et `TRAEFIK_CERTRESOLVER` correspondent à la configuration de Traefik (`docker network ls`, fichier `traefik.yml`).
+
+L'utilisateur SSH doit pouvoir lancer `docker` (membre du groupe `docker`).
+
+**2. Sur GitHub** (*Settings → Secrets and variables → Actions*)
+
+| Type | Nom | Valeur |
+|---|---|---|
+| Secret | `VPS_HOST` | IP ou nom du VPS |
+| Secret | `VPS_USER` | Utilisateur SSH |
+| Secret | `VPS_SSH_KEY` | Clé privée SSH (la clé publique dans `~/.ssh/authorized_keys` du VPS) |
+| Secret | `VPS_PORT` | *(optionnel)* port SSH, 22 par défaut |
+| Variable | `VPS_APP_DIR` | *(optionnel)* dossier sur le VPS, `/opt/ecom-backend` par défaut |
+
+Le job `deploy` utilise l'environnement GitHub `production` : on peut y ajouter une validation manuelle avant chaque déploiement.
+
+**3. MinIO** : créer le bucket, le rendre lisible publiquement et un utilisateur dédié à Django
+
+```bash
+mc alias set vps https://minio.miguelmissetcho.com <admin> <motdepasse>
+mc mb vps/ecom-media
+mc anonymous set download vps/ecom-media          # lecture publique (URLs stables)
+
+cat > ecom-media-rw.json <<'JSON'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::ecom-media"]},
+    {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": ["arn:aws:s3:::ecom-media/*"]}
+  ]
+}
+JSON
+mc admin policy create vps ecom-media-rw ecom-media-rw.json
+mc admin user add vps ecom-backend <secret-long>
+mc admin policy attach vps ecom-media-rw --user ecom-backend
+```
+
+Renseigner ensuite `MINIO_*` dans `.env` :
+- `MINIO_ENDPOINT_URL` : URL de l'API S3 vue depuis le conteneur Django — `http://<conteneur-minio>:9000` si MinIO est sur le même réseau Docker (ex. le réseau Traefik), sinon l'URL publique de l'API.
+- `MINIO_PUBLIC_DOMAIN` : domaine public + bucket (`minio.miguelmissetcho.com/ecom-media`), utilisé dans les URLs renvoyées au frontend.
+
+Pour reprendre des médias existants : `mc mirror ./media/ vps/ecom-media/`.
+
+**4. DNS** : faire pointer `BACKEND_DOMAIN` vers l'IP du VPS.
+
+### Commandes utiles sur le VPS
+
+```bash
+cd /opt/ecom-backend
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs -f web
+docker compose -f docker-compose.prod.yml exec web python manage.py createsuperuser
+
+# Sauvegarde de la base
+docker compose -f docker-compose.prod.yml exec -T db pg_dump -U dinomarket_user dinomarket > backup.sql
+```
+
+### Construire et lancer l'image en local
+
+```bash
+docker build -t ecom-backend .
+```
+
+`GET /healthz/` répond `{"status": "ok"}` ; il sert au healthcheck Docker.
 
 ### En-têtes de sécurité (prod)
 
