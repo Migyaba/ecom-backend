@@ -1,0 +1,52 @@
+# Déploiement sur le VPS derrière un Traefik existant.
+# Toutes les variables viennent du fichier .env situé à côté de ce fichier (voir .env.example).
+
+name: ecom-backend
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    image: ${BACKEND_IMAGE:-ghcr.io/migyaba/ecom-backend:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+      - traefik.http.routers.ecom-backend.rule=Host(`${BACKEND_DOMAIN}`)
+      - traefik.http.routers.ecom-backend.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.ecom-backend.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      - traefik.http.services.ecom-backend.loadbalancer.server.port=8000
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

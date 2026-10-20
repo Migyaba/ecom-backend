@@ -1,0 +1,117 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/migyaba/ecom-backend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: ci-only-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Vérifications Django
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+
+      - name: Tests
+        run: python manage.py test
+
+  build:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copier le docker-compose sur le VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          source: docker-compose.prod.yml
+          target: ${{ vars.VPS_APP_DIR || '/opt/ecom-backend' }}
+
+      - name: Déployer
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          BACKEND_IMAGE: ${{ needs.build.outputs.image }}
+          APP_DIR: ${{ vars.VPS_APP_DIR || '/opt/ecom-backend' }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: BACKEND_IMAGE,APP_DIR,GHCR_USER,GHCR_TOKEN
+          script: |
+            set -e
+            cd "$APP_DIR"
+            test -f .env || { echo "::error::$APP_DIR/.env est absent sur le VPS"; exit 1; }
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            export BACKEND_IMAGE
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans --wait --wait-timeout 180
+            docker logout ghcr.io
+
+            # Supprime les anciennes images devenues inutilisées
+            docker image prune -f
+            docker compose -f docker-compose.prod.yml ps

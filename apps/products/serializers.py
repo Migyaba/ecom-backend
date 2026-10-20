@@ -18,9 +18,13 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = ('id', 'image', 'image_url', 'url', 'order', 'is_cover')
 
     def get_url(self, obj):
-        if obj.image:
-            return self.context['request'].build_absolute_uri(obj.image.url)
-        return obj.image_url or None
+        return image_url(obj, self.context['request'])
+
+
+def image_url(img, request):
+    if img.image:
+        return request.build_absolute_uri(img.image.url)
+    return img.image_url or None
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
@@ -31,6 +35,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
 class ReviewSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
+    rating = serializers.IntegerField(min_value=1, max_value=5)
 
     class Meta:
         model = Review
@@ -44,6 +49,12 @@ class ReviewSerializer(serializers.ModelSerializer):
         # Fallback : prénom depuis l'email (avant le @)
         return obj.user.email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
 
+    def validate(self, attrs):
+        product = self.context.get('product')
+        if product and Review.objects.filter(product=product, user=self.context['request'].user).exists():
+            raise serializers.ValidationError('Vous avez déjà laissé un avis sur ce produit.')
+        return attrs
+
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         validated_data['product'] = self.context['product']
@@ -53,21 +64,30 @@ class ReviewSerializer(serializers.ModelSerializer):
 class ProductListSerializer(serializers.ModelSerializer):
     """Serializer allégé pour les grilles de listing."""
     cover = serializers.SerializerMethodField()
+    default_variant = serializers.SerializerMethodField()
     store_name = serializers.CharField(source='store.name', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
 
     class Meta:
         model = Product
-        fields = ('id', 'slug', 'name', 'store_name', 'category_name', 'price', 'original_price', 'badge', 'sale_ends_at', 'cover')
+        fields = (
+            'id', 'slug', 'name', 'store_name', 'category_name', 'price', 'original_price',
+            'badge', 'sale_ends_at', 'cover', 'default_variant',
+        )
 
+    # images / variants sont préchargés (prefetch_related) : on filtre en Python
+    # pour ne pas déclencher une requête par produit.
     @extend_schema_field(OpenApiTypes.URI)
     def get_cover(self, obj):
-        img = obj.images.filter(is_cover=True).first() or obj.images.first()
-        if not img:
-            return None
-        if img.image:
-            return self.context['request'].build_absolute_uri(img.image.url)
-        return img.image_url or None
+        images = list(obj.images.all())
+        img = next((i for i in images if i.is_cover), images[0] if images else None)
+        return image_url(img, self.context['request']) if img else None
+
+    @extend_schema_field(ProductVariantSerializer(allow_null=True))
+    def get_default_variant(self, obj):
+        """Variante utilisée par l'ajout rapide au panier (première en stock)."""
+        variant = next((v for v in obj.variants.all() if v.stock > 0), None)
+        return ProductVariantSerializer(variant).data if variant else None
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):

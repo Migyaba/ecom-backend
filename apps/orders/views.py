@@ -1,5 +1,9 @@
+from django.db import transaction
+from django.db.models import F
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from django.conf import settings
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.response import Response
 from drf_spectacular.utils import (
     extend_schema, extend_schema_view, OpenApiExample, OpenApiResponse, OpenApiParameter
@@ -7,6 +11,7 @@ from drf_spectacular.utils import (
 from drf_spectacular.types import OpenApiTypes
 
 _ID_PARAM = OpenApiParameter('id', OpenApiTypes.INT, OpenApiParameter.PATH, description='Identifiant unique de la commande.')
+from apps.products.models import ProductVariant
 from .models import Order
 from .serializers import OrderSerializer, CreateOrderSerializer
 
@@ -78,6 +83,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = CreateOrderSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         order = serializer.save()
+        order = self.get_queryset().get(pk=order.pk)
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
@@ -100,10 +106,41 @@ class OrderViewSet(viewsets.ModelViewSet):
         },
     )
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def cancel(self, request, pk=None):
         order = self.get_object()
+        order = Order.objects.select_for_update().get(pk=order.pk)
         if order.status not in ('pending', 'confirmed'):
             return Response({'detail': 'Cette commande ne peut plus être annulée.'}, status=status.HTTP_400_BAD_REQUEST)
+        for item in order.items.exclude(variant=None):
+            ProductVariant.objects.filter(pk=item.variant_id).update(stock=F('stock') + item.qty)
         order.status = 'cancelled'
-        order.save()
-        return Response(OrderSerializer(order).data)
+        order.save(update_fields=['status', 'updated_at'])
+        return Response(OrderSerializer(self.get_queryset().get(pk=order.pk)).data)
+
+
+@extend_schema(
+    tags=['Orders'],
+    summary='Vérifier un code promo',
+    description=(
+        'Indique si un code promo est valide et le pourcentage de réduction associé.\n\n'
+        'La réduction définitive est recalculée côté serveur lors de la commande.\n\n'
+        '**Accès public.**'
+    ),
+    parameters=[OpenApiParameter('code', OpenApiTypes.STR, OpenApiParameter.QUERY, description='Code promo saisi.')],
+    responses={
+        200: OpenApiResponse(description='Code valide : `{"code": "DINO10", "percent": 10}`.', response=OpenApiTypes.OBJECT),
+        404: OpenApiResponse(description='Code inconnu.', response=OpenApiTypes.OBJECT),
+    },
+)
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+@throttle_classes([ScopedRateThrottle])
+def check_promo(request):
+    code = request.query_params.get('code', '').strip().upper()
+    if code not in settings.PROMO_CODES:
+        return Response({'detail': 'Code promo invalide.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response({'code': code, 'percent': settings.PROMO_CODES[code]})
+
+
+check_promo.cls.throttle_scope = 'auth'
