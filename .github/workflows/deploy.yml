@@ -86,13 +86,13 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           source: docker-compose.prod.yml
-          target: ${{ vars.VPS_APP_DIR || '/opt/ecom-backend' }}
+          target: ${{ vars.VPS_APP_DIR || '/home/miguel/apps/ecomBackend' }}
 
       - name: Déployer
         uses: appleboy/ssh-action@v1.2.0
         env:
           BACKEND_IMAGE: ${{ needs.build.outputs.image }}
-          APP_DIR: ${{ vars.VPS_APP_DIR || '/opt/ecom-backend' }}
+          APP_DIR: ${{ vars.VPS_APP_DIR || '/home/miguel/apps/ecomBackend' }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
