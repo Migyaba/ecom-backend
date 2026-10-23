@@ -44,9 +44,13 @@ def healthz(request):
     return JsonResponse({'status': 'ok'})
 
 
+admin.site.site_title = 'DinoMarket'
+admin.site.site_header = 'DinoMarket'
+admin.site.index_title = 'Tableau de bord'
+
 urlpatterns = [
     path('healthz/', healthz, name='healthz'),
-    path('admin/', admin.site.urls),
+    path(settings.ADMIN_URL, admin.site.urls),
 
     # Auth JWT
     path('api/auth/token/', TokenObtainView.as_view(), name='token_obtain_pair'),

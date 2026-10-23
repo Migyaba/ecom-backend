@@ -1,6 +1,9 @@
 from pathlib import Path
 from datetime import timedelta
 import os
+
+from django.templatetags.static import static
+from django.urls import reverse_lazy
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,6 +13,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
 INSTALLED_APPS = [
+    # Thème de l'admin : doit être chargé avant django.contrib.admin
+    'unfold',
+    'unfold.contrib.filters',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -44,7 +50,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -136,8 +142,101 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [BASE_DIR / 'static']
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── Administration ───────────────────────────────────────────────
+# Chemin de l'admin, à personnaliser en production pour ne pas l'exposer sur /admin/
+ADMIN_URL = os.environ.get('ADMIN_URL', 'admin/').strip('/') + '/'
+
+# Seuil en dessous duquel un produit est signalé « stock bas » dans l'admin
+LOW_STOCK_THRESHOLD = 3
+
+UNFOLD = {
+    'SITE_TITLE': 'DinoMarket',
+    'SITE_HEADER': 'DinoMarket',
+    'SITE_SUBHEADER': 'Administration',
+    'SITE_URL': os.environ.get('FRONTEND_URL', 'https://dinomarket.vercel.app'),
+    'SITE_ICON': {
+        'light': lambda request: static('admin/dinomarket-light.svg'),
+        'dark': lambda request: static('admin/dinomarket-dark.svg'),
+    },
+    'SITE_FAVICONS': [
+        {'rel': 'icon', 'type': 'image/svg+xml', 'href': lambda request: static('admin/dinomarket-light.svg')},
+    ],
+    'SHOW_VIEW_ON_SITE': False,
+    'STYLES': [lambda request: static('admin/dinomarket.css')],
+    'DASHBOARD_CALLBACK': 'config.admin_dashboard.dashboard_callback',
+    'ENVIRONMENT': 'config.admin_dashboard.environment_callback',
+    # Or DinoMarket (#C89B3C) comme couleur principale
+    'COLORS': {
+        'primary': {
+            '50': 'oklch(98.5% .015 85)',
+            '100': 'oklch(96% .035 85)',
+            '200': 'oklch(92% .065 84)',
+            '300': 'oklch(86% .1 83)',
+            '400': 'oklch(78% .12 81)',
+            '500': 'oklch(71% .125 79)',
+            '600': 'oklch(62% .115 76)',
+            '700': 'oklch(52% .1 73)',
+            '800': 'oklch(43% .08 70)',
+            '900': 'oklch(36% .065 68)',
+            '950': 'oklch(25% .045 65)',
+        },
+    },
+    'SIDEBAR': {
+        'show_search': True,
+        'show_all_applications': False,
+        'navigation': [
+            {
+                'items': [
+                    {'title': 'Tableau de bord', 'icon': 'dashboard', 'link': reverse_lazy('admin:index')},
+                ],
+            },
+            {
+                'title': 'Ventes',
+                'items': [
+                    {
+                        'title': 'Commandes',
+                        'icon': 'shopping_bag',
+                        'link': reverse_lazy('admin:orders_order_changelist'),
+                        'badge': 'config.admin_dashboard.pending_orders_badge',
+                    },
+                ],
+            },
+            {
+                'title': 'Catalogue',
+                'items': [
+                    {'title': 'Produits', 'icon': 'checkroom', 'link': reverse_lazy('admin:products_product_changelist')},
+                    {'title': 'Catégories', 'icon': 'category', 'link': reverse_lazy('admin:products_category_changelist')},
+                    {'title': 'Boutiques', 'icon': 'storefront', 'link': reverse_lazy('admin:stores_store_changelist')},
+                ],
+            },
+            {
+                'title': 'Clients',
+                'items': [
+                    {'title': 'Utilisateurs', 'icon': 'person', 'link': reverse_lazy('admin:users_user_changelist')},
+                    {'title': 'Adresses', 'icon': 'home_pin', 'link': reverse_lazy('admin:users_address_changelist')},
+                    {'title': 'Listes de souhaits', 'icon': 'favorite', 'link': reverse_lazy('admin:wishlist_wishlistitem_changelist')},
+                ],
+            },
+            {
+                'title': 'Contenu',
+                'items': [
+                    {'title': 'Avis clients', 'icon': 'reviews', 'link': reverse_lazy('admin:products_review_changelist')},
+                    {'title': 'Témoignages', 'icon': 'format_quote', 'link': reverse_lazy('admin:products_testimonial_changelist')},
+                ],
+            },
+            {
+                'title': 'Accès',
+                'items': [
+                    {'title': 'Groupes', 'icon': 'group', 'link': reverse_lazy('admin:auth_group_changelist')},
+                ],
+            },
+        ],
+    },
+}
