@@ -1,5 +1,3 @@
-from django.db import transaction
-from django.db.models import F
 from rest_framework import viewsets, permissions, status
 from django.conf import settings
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
@@ -11,7 +9,6 @@ from drf_spectacular.utils import (
 from drf_spectacular.types import OpenApiTypes
 
 _ID_PARAM = OpenApiParameter('id', OpenApiTypes.INT, OpenApiParameter.PATH, description='Identifiant unique de la commande.')
-from apps.products.models import ProductVariant
 from .models import Order
 from .serializers import OrderSerializer, CreateOrderSerializer
 
@@ -106,16 +103,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         },
     )
     @action(detail=True, methods=['post'])
-    @transaction.atomic
     def cancel(self, request, pk=None):
         order = self.get_object()
-        order = Order.objects.select_for_update().get(pk=order.pk)
-        if order.status not in ('pending', 'confirmed'):
+        if not order.cancel():
             return Response({'detail': 'Cette commande ne peut plus être annulée.'}, status=status.HTTP_400_BAD_REQUEST)
-        for item in order.items.exclude(variant=None):
-            ProductVariant.objects.filter(pk=item.variant_id).update(stock=F('stock') + item.qty)
-        order.status = 'cancelled'
-        order.save(update_fields=['status', 'updated_at'])
         return Response(OrderSerializer(self.get_queryset().get(pk=order.pk)).data)
 
 

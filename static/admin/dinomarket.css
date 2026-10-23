@@ -1,0 +1,5 @@
+/* Miniatures des colonnes « en-tête » (produits, catégories, boutiques) : carré recadré */
+img.object-cover[width="44"][height="44"] {
+    width: 44px;
+    height: 44px;
+}

@@ -31,6 +31,7 @@ API REST générique pour applications e-commerce multi-vendeurs. Conçue avec *
 | Framework web | Django | 6.0.5 |
 | Serveur WSGI | Gunicorn (+ WhiteNoise) | 23.0.0 |
 | Stockage médias (prod) | django-storages → MinIO (S3) | 1.14.6 |
+| Interface d'administration | django-unfold | 0.110.0 |
 | API REST | Django REST Framework | 3.17.1 |
 | Authentification | djangorestframework-simplejwt | 5.5.1 |
 | Documentation | drf-spectacular (OpenAPI 3) | 0.28.0 |
@@ -405,6 +406,27 @@ Toutes les listes sont paginées — **20 éléments par page** par défaut.
 
 En développement, les médias sont écrits dans `media/` et servis par Django sous `/media/`.
 En production, ils sont stockés dans le bucket MinIO (`MINIO_BUCKET`) et les URLs renvoyées par l'API pointent vers `MINIO_PUBLIC_DOMAIN`.
+
+---
+
+## Administration
+
+L'admin Django utilise le thème **Unfold**, aux couleurs DinoMarket.
+
+| Élément | Où |
+|---|---|
+| URL | `/<ADMIN_URL>` — à définir dans `.env` (évite le `/admin/` par défaut) |
+| Tableau de bord | ventes du jour et du mois, commandes à traiter, stock bas, graphique 14 jours, dernières commandes — `config/admin_dashboard.py` + `templates/admin/index.html` |
+| Menu latéral, couleurs, logo | `UNFOLD` dans `config/settings/base.py`, logos dans `static/admin/` |
+| Commandes | actions « Étape suivante » / « Annuler » (restitue le stock) par ligne, dans la fiche et en masse ; création et suppression désactivées |
+| Produits | miniature, stock total avec alerte (`LOW_STOCK_THRESHOLD`), filtre rupture/stock bas, activation en masse |
+
+Créer un compte administrateur :
+
+```bash
+python manage.py createsuperuser                                                        # en local
+docker compose -f docker-compose.prod.yml exec web python manage.py createsuperuser    # sur le VPS
+```
 
 ---
 
