@@ -1,0 +1,39 @@
+# Mises à jour automatiques des dépendances : Dependabot ouvre des PR vers develop,
+# testées par le workflow CI avant fusion.
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      # Correctifs et versions mineures regroupés dans une seule PR ;
+      # les versions majeures arrivent séparément pour être vérifiées une à une
+      python-mineures:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore(deps)
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      actions:
+        patterns: ["*"]
